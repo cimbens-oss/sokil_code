@@ -1,0 +1,8 @@
+# FAST-LIVO2 Python Pipeline Dependencies
+# Install:  pip install -r requirements.txt
+# Setup:    bash setup.sh  (creates venv + installs automatically)
+
+numpy>=1.20         # Linear algebra, point cloud math
+opencv-python>=4.5  # Camera image processing, visual odometry
+pyyaml>=5.4         # YAML config file parsing
+rosbags>=0.9        # ROS1/ROS2 bag file reading

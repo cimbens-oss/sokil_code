@@ -47,17 +47,11 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 def find_bag_files():
     """Scan known locations for .bag / .db3 files.
 
-    Searches (in order):
-      1. ../lio_standalone/Scans/   (main scan archive)
-      2. ../                        (project root)
-      3. .                          (current directory)
-
+    Searches Bags/ directory and current working directory.
     Returns list of absolute paths, sorted by name.
     """
     search_dirs = [
         os.path.join(SCRIPT_DIR, 'Bags'),
-        os.path.join(SCRIPT_DIR, '..', 'lio_standalone', 'Scans'),
-        os.path.join(SCRIPT_DIR, '..'),
         os.getcwd(),
     ]
 
@@ -83,6 +77,7 @@ def auto_detect_config():
     Looks for FAST-LIVO2-main/config/avia.yaml relative to the project.
     """
     candidates = [
+        os.path.join(SCRIPT_DIR, 'config', 'avia.yaml'),
         os.path.join(SCRIPT_DIR, '..', 'FAST-LIVO2-main', 'config', 'avia.yaml'),
         os.path.join(SCRIPT_DIR, 'avia.yaml'),
     ]
@@ -103,6 +98,7 @@ def auto_detect_camera(config_path=None):
         config_dir = os.path.dirname(config_path)
         candidates.append(os.path.join(config_dir, 'camera_pinhole.yaml'))
     candidates.extend([
+        os.path.join(SCRIPT_DIR, 'config', 'camera_pinhole.yaml'),
         os.path.join(SCRIPT_DIR, '..', 'FAST-LIVO2-main', 'config', 'camera_pinhole.yaml'),
         os.path.join(SCRIPT_DIR, 'camera_pinhole.yaml'),
     ])
@@ -337,9 +333,12 @@ def prompt_yes_no(prompt, default=True):
 
 def prompt_bag_selection(bag_files):
     """Present a numbered list and let the user pick a bag file."""
+    bags_dir = os.path.join(SCRIPT_DIR, 'Bags')
+    os.makedirs(bags_dir, exist_ok=True)
     if not bag_files:
         print('ERROR: No .bag files found.')
-        print('Place .bag files in ../lio_standalone/Scans/ or provide a path.')
+        print(f'Place .bag files in {os.path.relpath(bags_dir)}/ or provide a path:')
+        print(f'  python run.py path/to/your_scan.bag')
         sys.exit(1)
 
     if len(bag_files) == 1:

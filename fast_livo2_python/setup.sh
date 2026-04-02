@@ -58,6 +58,23 @@ print('  All dependencies OK.')
 "
 echo ""
 
+# Create directories if missing
+mkdir -p Bags outputs
+echo "Directories:"
+echo "  Bags/     — place .bag files here"
+echo "  outputs/  — pipeline results go here"
+echo ""
+
+# Verify config files
+if [ -f "config/avia.yaml" ] && [ -f "config/camera_pinhole.yaml" ]; then
+    echo "Config files: OK (config/avia.yaml, config/camera_pinhole.yaml)"
+else
+    echo "WARNING: Config files missing from config/"
+    echo "  Expected: config/avia.yaml, config/camera_pinhole.yaml"
+    echo "  The pipeline will prompt for these paths at runtime."
+fi
+echo ""
+
 echo "============================================================"
 echo "  Setup complete!"
 echo ""

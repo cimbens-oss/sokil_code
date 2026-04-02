@@ -58,8 +58,8 @@ python region_viewer.py outputs/output_scan/map.pcd --x 10 20 --y -2 7 --z -1 1
 python region_viewer.py outputs/output_scan/map.pcd \
     --x 10 20 --y -2 7 --z -1 1 \
     --bag Bags/scan.bag \
-    --config ../FAST-LIVO2-main/config/avia.yaml \
-    --camera ../FAST-LIVO2-main/config/camera_pinhole.yaml
+    --config config/avia.yaml \
+    --camera config/camera_pinhole.yaml
 
 # Full-resolution slice analysis (heatmaps from ALL points)
 python slice_analysis.py outputs/output_scan/map.pcd
@@ -102,6 +102,9 @@ python slice_analysis.py outputs/output_scan/map.pcd --axis z --num-slices 20
 
 ```
 Bags/                   Put .bag files here
+config/                 Sensor config files (auto-detected)
+  avia.yaml               LiDAR/IMU extrinsics and SLAM parameters
+  camera_pinhole.yaml     Camera intrinsics
 outputs/                All outputs go here automatically
   output_<bagname>/     One folder per scan
     colored_viewer.html   3D viewer (open in browser)
@@ -114,4 +117,17 @@ region_viewer.py        Regional high-density viewer
 slice_analysis.py       Full-resolution heatmap tool
 setup.sh                Install script
 requirements.txt        Python dependencies
+```
+
+## Config Files
+
+The `config/` folder contains sensor calibration files for the Livox Avia LiDAR + camera setup:
+
+- **`avia.yaml`** — LiDAR-IMU extrinsics, topic names, SLAM parameters (voxel size, iteration counts, etc.)
+- **`camera_pinhole.yaml`** — Camera intrinsics (focal length, principal point, distortion)
+
+These are auto-detected by `run.py`. If you're using a different sensor setup, replace these files with your own calibration. If you move the config files elsewhere, use `--config` and `--camera` flags:
+
+```bash
+python run.py Bags/scan.bag --config /path/to/your_config.yaml --camera /path/to/your_camera.yaml
 ```

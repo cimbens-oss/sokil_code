@@ -5,7 +5,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 BAG_PATH="${1:?Usage: $0 <rosbag_path> [config_yaml] [camera_yaml] [output_dir]}"
-CONFIG="${2:-$SCRIPT_DIR/../FAST-LIVO2-main/config/avia.yaml}"
+CONFIG="${2:-$SCRIPT_DIR/config/avia.yaml}"
 CAMERA_CONFIG="${3:-}"
 OUTPUT_DIR="${4:-$SCRIPT_DIR/output}"
 

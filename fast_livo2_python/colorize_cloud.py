@@ -5,12 +5,12 @@ Generates a self-contained HTML viewer with Three.js, slice tools, and
 multiple color modes (RGB, height, time, intensity, distance).
 
 Usage:
-    python colorize_cloud.py --pcd output_front_room/map.pcd \
-        --bag "../front_room_scan (1).bag" \
-        --trajectory output_front_room/trajectory.txt \
-        --config ../FAST-LIVO2-main/config/avia.yaml \
-        --camera ../FAST-LIVO2-main/config/camera_pinhole.yaml \
-        --output output_front_room/colored_viewer.html
+    python colorize_cloud.py --pcd outputs/output_scan/map.pcd \
+        --bag Bags/scan.bag \
+        --trajectory outputs/output_scan/trajectory.txt \
+        --config config/avia.yaml \
+        --camera config/camera_pinhole.yaml \
+        --output outputs/output_scan/colored_viewer.html
 """
 import argparse
 import base64

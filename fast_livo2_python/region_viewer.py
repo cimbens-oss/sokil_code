@@ -16,8 +16,8 @@ Usage:
 
     # With bag for colorization and ground alignment
     python region_viewer.py outputs/output_scan/map.pcd \
-        --bag Bags/scan.bag --config ../FAST-LIVO2-main/config/avia.yaml \
-        --camera ../FAST-LIVO2-main/config/camera_pinhole.yaml \
+        --bag Bags/scan.bag --config config/avia.yaml \
+        --camera config/camera_pinhole.yaml \
         --x 5 15 --y -3 3
 
     # Interactive: prints bounds and lets you pick a region

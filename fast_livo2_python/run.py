@@ -1,48 +1,34 @@
 #!/usr/bin/env python3
-"""FAST-LIVO2 Pipeline Runner — one command, rosbag to HTML viewer.
+"""FAST-LIVO2 Pipeline Runner
 
-THIS IS THE ONLY FILE YOU NEED TO RUN. It handles the full pipeline:
-  rosbag → SLAM → point cloud → colorization → interactive 3D viewer
+Put a .bag file in Bags/, then run:  python run.py
 
-FIRST-TIME SETUP:
-    bash setup.sh                  (creates venv + installs dependencies)
-    — or —
-    pip install -r requirements.txt
+That's it. It runs SLAM, generates a 3D viewer, and opens it in your browser.
 
-USAGE:
-    python run.py                              (interactive — picks bag, auto-detects configs)
-    python run.py Bags/scan.bag                (auto-detects configs, confirms before running)
-    python run.py Bags/scan.bag --non-interactive   (fully automated, no prompts)
+SETUP:
+    bash setup.sh              (or: pip install -r requirements.txt)
 
-OPTIONS:
-    --config PATH           Main YAML config (default: auto-detect avia.yaml)
-    --camera PATH           Camera YAML config (default: auto-detect camera_pinhole.yaml)
-    --output-dir PATH       Output directory (default: ./outputs/output_<bagname>/)
-    --skip-slam             Skip SLAM — reuse existing map.pcd + trajectory.txt
-    --skip-colorize         Skip colorization — just run SLAM
-    --skip-thickened        Skip Mode 3 thickened variants (saves time)
-    --skip-slices           Skip automatic slice analysis step
-    --full                  Embed full point cloud (1.5M pts vs default 300K)
-    --min-voxel-pts N       Only keep voxels with N+ points (filters noise, default: 1)
-    --max-points N          Display limit per dataset (default: 200000)
-    --embed-limit N         Embed limit per dataset (default: 300000)
-    --non-interactive       No prompts — use defaults for everything
-    --no-open               Don't open viewer in browser when done
-    --no-align-ground       Disable ground plane alignment (on by default)
-    --info                  Analyze bag file(s) without running pipeline
+COMMON COMMANDS:
+    python run.py                                          # interactive
+    python run.py Bags/scan.bag --non-interactive           # automated
+    python run.py Bags/scan.bag --non-interactive --skip-slam  # re-gen viewer only
+    python run.py --info                                    # inspect bag files
 
-PIPELINE STEPS:
-    Step 1 (SLAM):      fast_livo2.py  → map.pcd, trajectory.txt
-    Step 2 (Colorize):  colorize_cloud.py → colored_viewer.html (with ground alignment)
-    Step 3 (Slices):    slice_analysis.py → slices/ (full-resolution heatmaps)
-    Step 4 (Open):      Opens viewer in default browser
+OUTPUTS (in outputs/output_<bagname>/):
+    colored_viewer.html    3D viewer — open in browser
+    map.pcd                SLAM point cloud (full resolution)
+    odometry_cloud.pcd     Odometry point cloud (raw scans + poses)
+    raw_lidar.pcd          Raw LiDAR in sensor frame
+    slices/                Density heatmaps + slice viewer
 
-DIRECTORY STRUCTURE:
-    Bags/               All input .bag files go here
-    outputs/            All pipeline outputs go here (auto-created)
-    slice_analysis.py   Standalone full-resolution heatmap tool
-    requirements.txt    Python package dependencies
-    setup.sh            One-command setup script
+OTHER TOOLS:
+    python region_viewer.py outputs/.../map.pcd --x 10 20 --y -2 7 --z -1 1
+        High-density viewer for a cropped region (uses all points in the box)
+
+    python slice_analysis.py outputs/.../map.pcd --axis z --num-slices 20
+        Full-resolution density heatmaps
+
+    python run.py --help       Full list of options
 """
 
 import argparse

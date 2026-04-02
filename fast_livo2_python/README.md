@@ -1,84 +1,117 @@
 # FAST-LIVO2 Python Pipeline
 
-Processes rosbag files (LiDAR + IMU + optional camera) into interactive 3D point cloud viewers with automatic ground alignment and slice analysis.
+Turns rosbag files (LiDAR + IMU + optional camera) into interactive 3D point cloud viewers you can open in a browser.
 
-## Setup
+## Quick Start
 
-```bash
-pip install -r requirements.txt
-```
-
-Or use the setup script (creates a virtual environment):
+### 1. Install dependencies
 
 ```bash
 bash setup.sh
 ```
 
-Requires Python 3.8+.
+Or manually: `pip install -r requirements.txt` (needs Python 3.8+, numpy, opencv-python, pyyaml, rosbags).
 
-## Usage
+### 2. Put your .bag file in `Bags/`
+
+### 3. Run the pipeline
 
 ```bash
-# Interactive — picks bag file, auto-detects configs
+python run.py
+```
+
+That's it. It will find your bag file, run SLAM, generate a viewer, and open it in your browser.
+
+## What it produces
+
+After running, you'll find in `outputs/output_<bagname>/`:
+
+| File | What it is |
+|------|-----------|
+| `colored_viewer.html` | Interactive 3D viewer (open in browser) |
+| `map.pcd` | Full SLAM point cloud |
+| `odometry_cloud.pcd` | Full odometry point cloud (raw scans + poses) |
+| `raw_lidar.pcd` | Raw LiDAR data in sensor frame |
+| `slices/` | Density heatmap PNGs + interactive slice viewer |
+
+## Common Commands
+
+```bash
+# Run full pipeline (interactive)
 python run.py
 
-# Specify a bag file directly
-python run.py Bags/Scan1.bag
+# Run full pipeline on a specific bag (no prompts)
+python run.py Bags/scan.bag --non-interactive --skip-thickened
 
-# Fully automated (no prompts)
-python run.py Bags/Scan1.bag --non-interactive --skip-thickened
+# Re-generate viewer without re-running SLAM (much faster)
+python run.py Bags/scan.bag --non-interactive --skip-slam --skip-thickened
 
-# Re-generate viewer only (skip SLAM, reuse existing map.pcd)
-python run.py Bags/Scan1.bag --non-interactive --skip-slam --skip-thickened
-
-# Analyze bag files without running the pipeline
+# See what's in a bag file before processing
 python run.py --info
-python run.py Bags/Scan1.bag --info
+python run.py Bags/scan.bag --info
 
-# Full-resolution slice analysis on an existing point cloud
-python slice_analysis.py outputs/output_scan1/map.pcd
-python slice_analysis.py outputs/output_scan1/map.pcd --axis z --num-slices 20
+# Generate a high-density viewer for a specific region
+python region_viewer.py outputs/output_scan/map.pcd --info          # see bounds
+python region_viewer.py outputs/output_scan/map.pcd --x 10 20 --y -2 7 --z -1 1
+
+# Region viewer with camera colorization
+python region_viewer.py outputs/output_scan/map.pcd \
+    --x 10 20 --y -2 7 --z -1 1 \
+    --bag Bags/scan.bag \
+    --config ../FAST-LIVO2-main/config/avia.yaml \
+    --camera ../FAST-LIVO2-main/config/camera_pinhole.yaml
+
+# Full-resolution slice analysis (heatmaps from ALL points)
+python slice_analysis.py outputs/output_scan/map.pcd
+python slice_analysis.py outputs/output_scan/map.pcd --axis z --num-slices 20
 ```
 
-## Directory Structure
+## Pipeline Options
 
-```
-Bags/               Input .bag files
-outputs/            Pipeline outputs (map.pcd, colored_viewer.html, slices/, etc.)
-run.py              Main entry point — the only file you need to run
-slice_analysis.py   Standalone full-resolution heatmap analysis
-setup.sh            One-command install script
-requirements.txt    Python dependencies
-```
-
-## Options
-
-Run `python run.py --help` for all options.
-
-| Flag | Description |
+| Flag | What it does |
 |------|-------------|
-| `--info` | Analyze bag file contents (topics, visual data, compatibility) |
-| `--full` | Embed more points in viewer (1.5M vs default 300K) |
-| `--min-voxel-pts N` | Only keep voxels with N+ points (filters noise, default: 1) |
-| `--skip-slam` | Reuse existing SLAM output (fast re-generation of viewer) |
-| `--skip-thickened` | Skip slow thickened variants |
-| `--skip-slices` | Skip automatic slice analysis step |
-| `--no-align-ground` | Disable ground plane alignment (on by default) |
-| `--non-interactive` | No prompts |
-| `--no-open` | Don't auto-open viewer in browser |
+| `--info` | Show bag contents (LiDAR/IMU/camera counts) without running anything |
+| `--skip-slam` | Skip SLAM, reuse existing map.pcd (for re-generating viewer quickly) |
+| `--skip-thickened` | Skip thickened variants (saves a lot of time) |
+| `--full` | Embed 1.5M points instead of 300K (bigger file, more detail in viewer) |
+| `--min-voxel-pts N` | Only keep voxels with N+ points (2-5 filters noise) |
+| `--no-align-ground` | Disable automatic ground leveling |
+| `--non-interactive` | No prompts, use all defaults |
+| `--no-open` | Don't auto-open the viewer in browser |
 
-## Ground Alignment
+## Tools
 
-The pipeline automatically levels the point cloud using a two-pass system:
-1. IMU gravity vector from the bag file (coarse alignment)
-2. Brute-force tilt optimization maximizing points in a thin horizontal band (fine-tuning)
+| File | Purpose |
+|------|---------|
+| `run.py` | Main pipeline: bag -> SLAM -> viewer (the only file you need) |
+| `region_viewer.py` | High-density viewer for a cropped X/Y/Z region of the point cloud |
+| `slice_analysis.py` | Full-resolution density heatmaps from map.pcd |
 
-Disable with `--no-align-ground`.
+## How It Works
 
-## Viewer Modes
+1. **SLAM** (`fast_livo2.py`) — processes LiDAR + IMU to build a 3D map
+2. **Viewer** (`colorize_cloud.py`) — colorizes the map, generates an HTML viewer with:
+   - LIVO2 Map (SLAM output)
+   - Raw LiDAR (sensor frame, no transforms)
+   - Odometry Cloud (raw scans projected using poses)
+   - Overlay (both combined)
+3. **Slice Analysis** (`slice_analysis.py`) — Z-axis density heatmaps on full point cloud
+4. **Ground Alignment** — automatic two-pass leveling (IMU gravity + tilt optimization)
 
-- **Height** — color by Z elevation
-- **Intensity** — LiDAR return intensity
-- **RGB** — camera color (when images are available)
-- **Slice Preview** — interactive Z-slicing in the 3D viewer
-- **Heatmap Sweep** — density heatmaps (subsampled in viewer, full resolution via slice_analysis.py)
+## Directory Layout
+
+```
+Bags/                   Put .bag files here
+outputs/                All outputs go here automatically
+  output_<bagname>/     One folder per scan
+    colored_viewer.html   3D viewer (open in browser)
+    map.pcd               SLAM point cloud
+    odometry_cloud.pcd    Odometry point cloud
+    raw_lidar.pcd         Raw sensor-frame cloud
+    slices/               Heatmap analysis
+run.py                  Main entry point
+region_viewer.py        Regional high-density viewer
+slice_analysis.py       Full-resolution heatmap tool
+setup.sh                Install script
+requirements.txt        Python dependencies
+```

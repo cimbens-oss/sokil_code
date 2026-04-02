@@ -46,6 +46,25 @@ def read_pcd_ascii(path):
     return np.array(pts, dtype=np.float32)
 
 
+def _save_pcd_simple(path, pts):
+    """Save Nx3 point cloud as ASCII PCD file."""
+    pts = np.asarray(pts, dtype=np.float32)
+    n = len(pts)
+    with open(path, 'w') as f:
+        f.write("# .PCD v0.7 - Point Cloud Data file format\n")
+        f.write("VERSION 0.7\n")
+        f.write("FIELDS x y z\n")
+        f.write("SIZE 4 4 4\n")
+        f.write("TYPE F F F\n")
+        f.write("COUNT 1 1 1\n")
+        f.write(f"WIDTH {n}\n")
+        f.write("HEIGHT 1\n")
+        f.write("VIEWPOINT 0 0 0 1 0 0 0\n")
+        f.write(f"POINTS {n}\n")
+        f.write("DATA ascii\n")
+        np.savetxt(f, pts, fmt='%.6f')
+
+
 def voxel_downsample(pts, voxel_size, max_points=None, min_count=1):
     """Downsample points to one point per voxel cube.
 
@@ -280,13 +299,41 @@ def extract_lidar_scans(bag_path, lid_topic, imu_topic):
     return lidar_msgs
 
 
+def build_raw_lidar_cloud(lidar_scans, blind=0.8):
+    """Stack all raw LiDAR scans in the sensor frame (no transforms).
+
+    Returns (pts_lidar_Mx3 float32, intensities_M float32).
+    The result should look like a cone / fan since all scans overlap at origin.
+    """
+    blind_sq = blind * blind
+    all_pts = []
+    all_intens = []
+    for ts, pts, times, intens in lidar_scans:
+        if len(pts) == 0:
+            continue
+        dist_sq = np.sum(pts * pts, axis=1)
+        mask = dist_sq > blind_sq
+        if mask.any():
+            all_pts.append(pts[mask].astype(np.float32))
+            all_intens.append(intens[mask].astype(np.float32))
+    pts = np.concatenate(all_pts, axis=0) if all_pts else np.zeros((0, 3), dtype=np.float32)
+    ints = np.concatenate(all_intens, axis=0) if all_intens else np.zeros(0, dtype=np.float32)
+    print(f"[Raw LiDAR] {len(pts):,} points in sensor frame")
+    return pts, ints
+
+
 def build_odometry_cloud(lidar_scans, poses, ext_R, ext_T, blind=0.8):
-    """Transform raw LiDAR scans to world frame using nearest trajectory pose.
+    """Transform raw LiDAR scans to world frame using odometry poses.
 
     For each scan:
       1. Find nearest pose by scan-end timestamp
       2. Filter blind zone (range > blind)
       3. Transform: p_world = R_pose @ (ext_R @ p_lidar + ext_T) + t_pose
+
+    This uses the odometry file output by the SLAM pipeline.
+    The result differs from map.pcd because map.pcd is built internally
+    with undistortion, scan matching, and voxel filtering, while this
+    projects the raw scans using the nearest odometry pose.
 
     Returns (pts_world_Mx3 float32, intensities_M float32).
     """
@@ -299,7 +346,7 @@ def build_odometry_cloud(lidar_scans, poses, ext_R, ext_T, blind=0.8):
     for i, (ts, pts, times, intens) in enumerate(lidar_scans):
         if len(pts) == 0:
             continue
-        # Use scan-end time for pose matching (same as SLAM pipeline)
+        # Use scan-end time for pose matching
         scan_end = ts + float(times.max()) if len(times) > 0 else ts
         idx = np.argmin(np.abs(pose_times - scan_end))
 
@@ -734,6 +781,7 @@ def build_viewer_html(datasets):
 </head>
 <body>
 <div id="info"></div>
+<div id="cursorCoords" style="position:fixed;bottom:8px;left:8px;background:rgba(0,0,0,0.7);color:#4fc3f7;font-family:monospace;font-size:13px;padding:4px 10px;border-radius:4px;pointer-events:none;z-index:100;">X: —  Y: —  Z: —</div>
 <div id="controls">
   Drag: orbit | Scroll: zoom | Right-drag: pan | R: reset view
 </div>
@@ -1773,6 +1821,35 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
+// ── 3D cursor coordinate tracker ──
+const raycaster = new THREE.Raycaster();
+raycaster.params.Points.threshold = 0.05;
+const mouse = new THREE.Vector2();
+let cursorThrottle = 0;
+
+renderer.domElement.addEventListener('mousemove', function(event) {
+  const now = Date.now();
+  if (now - cursorThrottle < 50) return;  // 20 Hz max
+  cursorThrottle = now;
+
+  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+  const pts = scene.children.filter(c => c.isPoints);
+  const intersects = raycaster.intersectObjects(pts);
+
+  const el = document.getElementById('cursorCoords');
+  if (intersects.length > 0) {
+    const p = intersects[0].point;
+    el.textContent = 'X: ' + p.x.toFixed(3) + '  Y: ' + p.y.toFixed(3) + '  Z: ' + p.z.toFixed(3);
+    el.style.color = '#4fc3f7';
+  } else {
+    el.textContent = 'X: \u2014  Y: \u2014  Z: \u2014';
+    el.style.color = '#666';
+  }
+});
+
 function animate() {
   requestAnimationFrame(animate);
   controls.update();
@@ -1976,14 +2053,56 @@ def main():
                                   intensities=intens_s)
     datasets.append(ds_map)
 
-    # ── Mode 1: Odometry-Only Cloud ─────────────────────────────
+    # ── Mode 0: Raw LiDAR Cloud (sensor frame) ─────────────────
     print(f"\n{'='*60}")
-    print("Mode 1: Odometry Cloud")
+    print("Mode 0: Raw LiDAR Cloud (sensor frame)")
     print(f"{'='*60}")
     lidar_scans = extract_lidar_scans(args.bag, lid_topic, imu_topic)
+    pts_raw_full, intens_raw_full = build_raw_lidar_cloud(lidar_scans, blind=blind)
+    total_raw = len(pts_raw_full)
+
+    # Save raw cloud to PCD file
+    output_dir = os.path.dirname(
+        args.output or os.path.join(os.path.dirname(args.pcd), 'viewer.html'))
+    raw_pcd_path = os.path.join(output_dir, 'raw_lidar.pcd')
+    _save_pcd_simple(raw_pcd_path, pts_raw_full)
+    print(f"  Saved raw LiDAR cloud: {raw_pcd_path} ({os.path.getsize(raw_pcd_path)/1e6:.1f} MB)")
+
+    # Downsample for viewer
+    if voxel_size > 0 and (total_raw > embed_limit or min_vp > 1):
+        idx = voxel_downsample(pts_raw_full, voxel_size, max_points=embed_limit, min_count=min_vp)
+        pts_raw = pts_raw_full[idx]
+        intens_raw = intens_raw_full[idx]
+        print(f"  Voxel downsample ({voxel_size*100:.0f}cm, >={min_vp}pts): {total_raw:,} -> {len(pts_raw):,}")
+    else:
+        pts_raw = pts_raw_full
+        intens_raw = intens_raw_full
+
+    # No colorization for raw cloud — no poses to project from
+    colors_raw = np.zeros((len(pts_raw), 3), dtype=np.uint8)
+    mask_raw = np.zeros(len(pts_raw), dtype=bool)
+
+    dc = min(display_count, len(pts_raw))
+    pts_s, colors_s, mask_s, intens_s = sort_colored_first(
+        pts_raw.copy(), colors_raw.copy(), mask_raw.copy(), dc,
+        intensities=intens_raw.copy())
+    ds_raw = pack_viewer_dataset("Raw LiDAR (sensor frame)", pts_s, colors_s, mask_s,
+                                  total_points=total_raw, display_count=dc,
+                                  intensities=intens_s)
+    datasets.append(ds_raw)
+
+    # ── Mode 1: Odometry Cloud (raw scans + odometry poses) ────
+    print(f"\n{'='*60}")
+    print("Mode 1: Odometry Cloud (raw scans + odometry poses)")
+    print(f"{'='*60}")
     pts_odom_full, intens_odom_full = build_odometry_cloud(
         lidar_scans, poses, ext_R, ext_T, blind=blind)
     total_odom = len(pts_odom_full)
+
+    # Save odometry cloud to PCD file
+    odom_pcd_path = os.path.join(output_dir, 'odometry_cloud.pcd')
+    _save_pcd_simple(odom_pcd_path, pts_odom_full)
+    print(f"  Saved odometry cloud: {odom_pcd_path} ({os.path.getsize(odom_pcd_path)/1e6:.1f} MB)")
 
     # Voxel downsample if over embed limit or filtering by density
     if voxel_size > 0 and (total_odom > embed_limit or min_vp > 1):
@@ -1995,7 +2114,7 @@ def main():
         pts_odom = pts_odom_full
         intens_odom = intens_odom_full
 
-    # Colorize once — reuse for both individual dataset and overlay
+    # Colorize
     print(f"\nColorizing {len(pts_odom):,} points for 'Odometry Cloud'...")
     colors_odom, mask_odom = colorize_points(pts_odom, poses, images, *cam_args)
 
@@ -2052,7 +2171,7 @@ def main():
 
     # ── Mode 4: Overlay (Odometry + LIVO2 Map) ──────────────────
     print(f"\n{'='*60}")
-    print("Mode 4: Overlay (Odometry + LIVO2)")
+    print("Mode 4: Overlay (Odom + LIVO2)")
     print(f"{'='*60}")
     pts_overlay = np.concatenate([pts_map, pts_odom], axis=0)
     colors_overlay = np.concatenate([colors_map, colors_odom], axis=0)
